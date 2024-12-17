@@ -1,12 +1,4 @@
 import os
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Access the API keys
-cohere_api_key = os.getenv("COHERE_API_KEY")
-google_vertex_api_key = os.getenv("GOOGLE_VERTEX_API_KEY")
 
 
 
@@ -14,6 +6,8 @@ import json
 import numpy as np
 import faiss
 import streamlit as st
+
+from dotenv import load_dotenv
 from langchain.document_loaders import PyPDFLoader, TextLoader
 from tempfile import NamedTemporaryFile
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -22,6 +16,24 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_google_vertexai import ChatVertexAI
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Access the API keys
+cohere_api_key = os.getenv("COHERE_API_KEY")
+
+# Check if the key is loaded correctly
+if not cohere_api_key:
+    raise ValueError("Cohere API Key is missing!")
+
+google_vertex_api_key = os.getenv("GOOGLE_VERTEX_API_KEY")
+
+# Check if the key is loaded correctly
+if not google_vertex_api_key:
+    raise ValueError("Google Vertex API Key is missing!")
+
 
 # Token estimation function
 def estimate_tokens(text):
@@ -82,8 +94,12 @@ def split_docs(documents, chunk_size=1000, chunk_overlap=20, max_tokens=2000):
 
 
 # Create the Cohere Embedding Model
-embeddings = CohereEmbeddings(model="embed-english-v3.0")
-
+#embeddings = CohereEmbeddings(api_key=cohere_api_key, model="embed-english-v3.0")
+try:
+    embeddings = CohereEmbeddings(model="embed-english-v3.0", api_key=cohere_api_key)
+except Exception as e:
+    st.error(f"Error initializing CohereEmbeddings: {e}")
+    raise
 
 # Implement Retry Logic for Embeddings
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=1, max=10))

@@ -11,9 +11,9 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_google_vertexai import ChatVertexAI
 from tenacity import retry, stop_after_attempt, wait_exponential
-from pyngrok import ngrok
+#from pyngrok import ngrok
 
-ngrok.set_auth_token("2po1TCRu94I8GFTrAfJ4wkhmbKj_7CkEpn4edG2oAWV2t9zQa")
+#ngrok.set_auth_token("2po1TCRu94I8GFTrAfJ4wkhmbKj_7CkEpn4edG2oAWV2t9zQa")
 
 # Token estimation function
 def estimate_tokens(text):
@@ -28,11 +28,11 @@ def process_uploaded_files(uploaded_files):
     for uploaded_file in uploaded_files:
         # Save the uploaded file to a temporary file
         file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-        
+
         with NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
             temp_file_path = tmp_file.name
-        
+
         # Choose loader based on file type
         if file_extension == ".pdf":
             loader = PyPDFLoader(temp_file_path)
@@ -41,7 +41,7 @@ def process_uploaded_files(uploaded_files):
         else:
             st.warning(f"Unsupported file format: {file_extension}. Skipping {uploaded_file.name}")
             continue
-        
+
         # Load documents and extend the document list
         try:
             documents = loader.load()
@@ -49,10 +49,10 @@ def process_uploaded_files(uploaded_files):
         except Exception as e:
             st.error(f"Error loading {uploaded_file.name}: {e}")
             continue
-        
+
         # Optionally clean up the temporary file after processing
         os.remove(temp_file_path)
-    
+
     return document_list
 
 
@@ -60,7 +60,7 @@ def process_uploaded_files(uploaded_files):
 def split_docs(documents, chunk_size=1000, chunk_overlap=20, max_tokens=2000):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     chunks = text_splitter.split_documents(documents)
-    
+
     # Ensure chunks do not exceed token limit
     valid_chunks = []
     for chunk in chunks:
@@ -69,7 +69,7 @@ def split_docs(documents, chunk_size=1000, chunk_overlap=20, max_tokens=2000):
             valid_chunks.append(chunk)
         else:
             st.warning(f"Skipping chunk due to token limit: {chunk.page_content[:100]}... (tokens: {token_count})")
-    
+
     return valid_chunks
 
 
@@ -113,39 +113,57 @@ def create_faiss_vectorstore_from_docs(docs, embeddings, faiss_index_path, metad
 
 
 # Perform Retrieval and Generate Answer
-def search_similar_docs_with_faiss_and_generate_answer(query, index, metadata, embeddings, model, k=3, max_context_tokens=2000):
-    """Retrieve and synthesize information from multiple documents."""
+def search_similar_docs_with_faiss_and_generate_answer(
+    query, index, metadata, embeddings, model, k=3, max_context_tokens=2000
+):
+    """Retrieve and synthesize information from multiple documents, prioritizing by relevance score."""
     query_embedding = embeddings.embed_query(query)
     query_embedding = np.array(query_embedding).astype('float32').reshape(1, -1)
 
     # Perform FAISS search
-    _, indices = index.search(query_embedding, k)
+    distances, indices = index.search(query_embedding, k)
 
     if indices[0].size > 0 and np.any(indices[0] != -1):  # Ensure valid retrieval
-        retrieved_docs = [metadata[i] for i in indices[0] if i != -1]
-        st.write(f"Retrieved {len(retrieved_docs)} document(s) for the query:")
-        #for i, doc in enumerate(retrieved_docs):                                   #for turning on data retrieval
-        #    st.write(f"Document {i+1} Snippet: {doc['content'][:200]}...")  # Display snippet
+        # Pair retrieved document indices with their relevance scores (distances)
+        retrieved_docs = []
+        for idx, score in zip(indices[0], distances[0]):
+            if idx != -1:
+                retrieved_docs.append((metadata[idx], score))
 
-        # Concatenate context for the LLM
-        context = "\n---\n".join([f"Document {i+1}:\n{doc['content']}" for i, doc in enumerate(retrieved_docs)])
+        # Deduplicate the retrieved documents
+        unique_docs = {doc['content']: (doc, score) for doc, score in retrieved_docs}.values()
+        retrieved_docs = list(unique_docs)
+
+        # Sort documents by relevance (ascending distance means higher relevance)
+        retrieved_docs.sort(key=lambda x: x[1])
+
+        st.write(f"Retrieved {len(retrieved_docs)} document(s) for the query, sorted by relevance:")
+        #for i, (doc, score) in enumerate(retrieved_docs):  # Display snippets and scores
+        #    st.write(f"Document {i + 1} | Score: {score:.4f} | Snippet: {doc['content'][:200]}...")
+
+        # Concatenate the most relevant context for the LLM
+        context = "\n---\n".join(
+            [f"Document {i + 1} (Score: {score:.4f}):\n{doc['content']}" for i, (doc, score) in enumerate(retrieved_docs)]
+        )
 
         # Summarize context if it exceeds token limit
         if len(context.split()) > max_context_tokens:
-            st.write("Context too large; summarizing...")
-            context = summarize_long_context(retrieved_docs, model, max_context_tokens)
+            st.write("Context too large; summarizing the top documents...")
+            context = summarize_long_context([doc for doc, _ in retrieved_docs], model, max_context_tokens)
 
         if not context.strip():
             st.write("No sufficient context retrieved to answer the query.")
             return "I cannot determine this from the provided information."
 
         # Generate the answer
-        #st.write(f"Context passed to LLM: {context[:500]}...")  # Display first 500 chars for debugging
-        answer = generate_answer_with_llm(query, retrieved_docs, model)
+        # st.write(f"Context passed to LLM: {context[:500]}...")  # Debugging output
+        answer = generate_answer_with_llm(query, [doc for doc, _ in retrieved_docs], model)
         st.write(f"### Generated Answer: {answer}")
+        return answer
     else:
         st.write("No relevant documents found for the query.")
         return "I cannot determine this from the provided information."
+
 
 
 
@@ -164,7 +182,7 @@ def generate_answer_with_llm(query, retrieved_docs, model):
         Question:
         {question}
 
-        Answer:""" 
+        Answer:"""
     )
 
     llm_chain = LLMChain(prompt=prompt, llm=model)
@@ -179,10 +197,10 @@ def summarize_long_context(retrieved_docs, model, max_context_tokens=2000):
     prompt = PromptTemplate(
         input_variables=["content"],
         template="""Summarize the following document to capture the key points in 200 words or less:
-        
+
         {content}
-        
-        Summary:""" 
+
+        Summary:"""
     )
 
     llm_chain = LLMChain(prompt=prompt, llm=model)
@@ -220,7 +238,7 @@ def update_index_with_new_files(uploaded_files, faiss_index_path, metadata_path,
             for i in range(0, len(new_texts), 100):  # Batch embedding
                 batch = new_texts[i:i + 100]
                 new_embeddings.extend(embed_documents_with_retry(batch, embeddings))
-            
+
             new_embeddings_array = np.array(new_embeddings).astype('float32')
 
             # Create or update FAISS index
@@ -274,8 +292,8 @@ def main():
     )
 
     # FAISS index and metadata paths (hidden)
-    faiss_index_path = "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/faiss_metadata/faiss_index.index"  
-    metadata_path = "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/faiss_metadata/metadata.json" 
+    faiss_index_path = "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/faiss_metadata/faiss_index.index"
+    metadata_path = "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/faiss_metadata/metadata.json"
 
     # Initialize Vertex AI model
     model = ChatVertexAI(model="gemini-1.5-flash", project_id="mymlproject-444721")

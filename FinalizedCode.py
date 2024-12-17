@@ -17,23 +17,25 @@ from langchain.chains import LLMChain
 from langchain_google_vertexai import ChatVertexAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+import getpass
+import os
 
-# Load environment variables from .env file
-load_dotenv()
+if not os.getenv("COHERE_API_KEY"):
+    os.environ["COHERE_API_KEY"] = getpass.getpass("Enter your Cohere API key: ")
 
-# Access the API keys
-cohere_api_key = os.getenv("COHERE_API_KEY")
+if not os.getenv("GoogleVertex_API_KEY"):
+    os.environ["GoogleVertex_API_KEY"] = getpass.getpass("Enter your Google Vertex API key: ")
 
-# Check if the key is loaded correctly
-if not cohere_api_key:
-    raise ValueError("Cohere API Key is missing!")
+# Get the file path from the user
+file_path = st.text_input("Enter the path to the JSON credentials file:")
 
-google_vertex_api_key = os.getenv("GOOGLE_VERTEX_API_KEY")
+if file_path:
+    st.write(f"You entered: {file_path}")
+else:
+    st.write("Please enter a valid file path.")
 
-# Check if the key is loaded correctly
-if not google_vertex_api_key:
-    raise ValueError("Google Vertex API Key is missing!")
-
+if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = file_path # "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/mymlproject-444721-140c4261cfb8.json"
 
 # Token estimation function
 def estimate_tokens(text):
@@ -96,7 +98,7 @@ def split_docs(documents, chunk_size=1000, chunk_overlap=20, max_tokens=2000):
 # Create the Cohere Embedding Model
 #embeddings = CohereEmbeddings(api_key=cohere_api_key, model="embed-english-v3.0")
 try:
-    embeddings = CohereEmbeddings(model="embed-english-v3.0", api_key=cohere_api_key)
+    embeddings = CohereEmbeddings(model="embed-english-v3.0")
 except Exception as e:
     st.error(f"Error initializing CohereEmbeddings: {e}")
     raise

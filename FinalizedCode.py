@@ -1,7 +1,4 @@
 import os
-
-
-
 import json
 import numpy as np
 import faiss
@@ -17,25 +14,25 @@ from langchain.chains import LLMChain
 from langchain_google_vertexai import ChatVertexAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-import getpass
-import os
 
-if not os.getenv("COHERE_API_KEY"):
-    os.environ["COHERE_API_KEY"] = getpass.getpass("Enter your Cohere API key: ")
 
-if not os.getenv("GoogleVertex_API_KEY"):
-    os.environ["GoogleVertex_API_KEY"] = getpass.getpass("Enter your Google Vertex API key: ")
 
-# Get the file path from the user
-file_path = st.text_input("Enter the path to the JSON credentials file:")
+# Access environment variables from Streamlit's secrets
+cohere_api_key = st.secrets["COHERE_API_KEY"]
+google_vertex_api_key = st.secrets["GOOGLE_VERTEX_API_KEY"]
+google_credentials_path = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
 
-if file_path:
-    st.write(f"You entered: {file_path}")
-else:
-    st.write("Please enter a valid file path.")
+# Set the environment variables
+os.environ["COHERE_API_KEY"] = cohere_api_key
+os.environ["GOOGLE_VERTEX_API_KEY"] = google_vertex_api_key
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_credentials_path
 
-if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = file_path # "/content/drive/MyDrive/bintefatimatuzzahra28/ML_Project/mymlproject-444721-140c4261cfb8.json"
+# Access the secrets from Streamlit
+private_key = st.secrets["google"]["GOOGLE_APPLICATION_CREDENTIALS_PRIVATE_KEY"]
+client_email = st.secrets["google"]["GOOGLE_APPLICATION_CREDENTIALS_CLIENT_EMAIL"]
+client_id = st.secrets["google"]["GOOGLE_APPLICATION_CREDENTIALS_CLIENT_ID"]
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = private_key
 
 # Token estimation function
 def estimate_tokens(text):

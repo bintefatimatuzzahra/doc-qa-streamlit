@@ -1,4 +1,15 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Access the API keys
+cohere_api_key = os.getenv("COHERE_API_KEY")
+google_vertex_api_key = os.getenv("GOOGLE_VERTEX_API_KEY")
+
+
+
 import json
 import numpy as np
 import faiss
@@ -11,9 +22,6 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_google_vertexai import ChatVertexAI
 from tenacity import retry, stop_after_attempt, wait_exponential
-#from pyngrok import ngrok
-
-#ngrok.set_auth_token("2po1TCRu94I8GFTrAfJ4wkhmbKj_7CkEpn4edG2oAWV2t9zQa")
 
 # Token estimation function
 def estimate_tokens(text):
